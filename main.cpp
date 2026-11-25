@@ -1,35 +1,53 @@
-typedef int stack_t;
-
-#include "stack.h"
-#include "calc.h"
-
-#define stackCtor(stk, capacity) if(stackCtor(stk, capacity) != PROCESS_OK) return stk1.error.type
-#define stackPush(stk, value)    if(stackPush(stk, value) != PROCESS_OK) return stk1.error.type
-#define stackPop(stk, stkElem)   if(stackPop(stk, stkElem) != PROCESS_OK) return stk1.error.type
+#include "VM/ram.h"
+#include "processor/processor.h"
+#include "translator/translator.h"
+#include "general/file.h"
+#include "general/poison.h"
+#include "general/stack/stack.h"
 
 
-int main(void){
-    stack stk1 = {0};
-    stackCtor(&stk1, 10);
+const char* const FLAG_INPUT_FILE  = "-i";
+const char* const FLAG_OUTPUT_FILE = "-o";
 
-    calculator(&stk1);
+const char* textCommandsFileName   = "quadratic.txt"; 
+
+int main(int argc, char* argv[]){
+    const char* filename = textCommandsFileName;
+    if(argc == 2){
+        filename = argv[1];
+    }
+
+    data buf = {};
+    if((parseStringsFile(&buf, filename)) == EXIT_FAILURE) return false;
+
+    translator_t translator;
+    translatorCtor(&translator);
+
+    loadTextCommands(&translator, {buf.strings, buf.nStrings});
+
+    assemble(&translator);
+
+    buffer_t* opcode = &translator.opcode;
+
+    translatorDtor(&translator);
+    free(buf.buffer); 
+    free(buf.strings); 
+
+    ram_t* ram = ramCtor();
+    processor spu1; 
+    processorCtor(&spu1, ram);
+
+    loadOpcode(&spu1, *opcode);
+
+    runProcessor(&spu1);
     
-    // #ifdef DEBUG
-    // size_t capacity = 10;
-    // stackCtor(&stk1, capacity);
+    processorDump(&spu1);
 
-    // stackPush(&stk1, 10);
-    // stackPush(&stk1, 37);
-    // stackPush(&stk1, 37);
-    // stackPush(&stk1, 37);
+    ramDtor(ram);
+    processorDtor(&spu1);
 
-    // stack_t stackElem = 0;
-    // stackPop(&stk1, &stackElem);
-    // stackPop(&stk1, &stackElem);
-    // printf("Элемент стека — %d\n", stackElem);
-    // #endif
-
-    stackDtor(&stk1);
-
-    return 0;
+    poisonMemory(spu1.opcode.ptr, spu1.opcode.size);
+    free(spu1.opcode.ptr);
+    spu1.opcode.ptr = NULL;
+    poisonMemory(&spu1.opcode.size, sizeof(spu1.opcode.size));
 }
